@@ -61,11 +61,13 @@ def bindable_tools(paths, tools: dict):
         if name in builtin:
             out.append(builtin[name])
         else:
-            out.append(
-                StructuredTool.from_function(
-                    func=fn,
-                    name=name,
-                    description=(fn.__doc__ or name),
-                )
-            )
+            extra_kwargs = {
+                "func": fn,
+                "name": name,
+                "description": (fn.__doc__ or name),
+            }
+            schema = getattr(fn, "args_schema", None)
+            if schema is not None:
+                extra_kwargs["args_schema"] = schema
+            out.append(StructuredTool.from_function(**extra_kwargs))
     return out

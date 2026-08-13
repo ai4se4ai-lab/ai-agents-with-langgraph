@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import inspect
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import timedelta
 from backend.tools.mcp_config import ServerSpec
@@ -33,15 +34,24 @@ def connect_server(spec: ServerSpec) -> list[dict]:
                 def fn(**kwargs):
                     def call():
                         return tool.invoke(kwargs)
-                    with ThreadPoolExecutor(max_workers=1) as pool:
-                        fut = pool.submit(call)
-                        try:
-                            result = fut.result(timeout=spec.timeout)
-                        except FutureTimeout:
-                            raise TimeoutError(f"MCP {spec.name}/{tool.name} timed out after {spec.timeout}s")
+                    pool = ThreadPoolExecutor(max_workers=1)
+                    fut = pool.submit(call)
+                    try:
+                        result = fut.result(timeout=spec.timeout)
+                    except FutureTimeout:
+                        raise TimeoutError(f"MCP {spec.name}/{tool.name} timed out after {spec.timeout}s")
+                    finally:
+                        pool.shutdown(wait=False, cancel_futures=True)
                     return str(result)
                 fn.__doc__ = getattr(tool, "description", None) or tool.name
                 fn.__name__ = tool.name
+                fn.args_schema = getattr(tool, "args_schema", None)
+                src = getattr(tool, "func", None) or getattr(tool, "coroutine", None)
+                if src is not None:
+                    try:
+                        fn.__signature__ = inspect.signature(src)
+                    except (TypeError, ValueError):
+                        pass
                 return fn
             out.append({"name": t.name, "fn": make(), "description": getattr(t, "description", "") or t.name})
         return out
