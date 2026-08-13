@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { NODES, nodeForStep } from "./loopMap";
+import { actLabel, type McpServer } from "./mcp";
 
 const API = import.meta.env.VITE_GATEWAY || "http://127.0.0.1:8765";
 
@@ -10,6 +11,8 @@ type LoopEvent = {
   observation?: string;
   input?: string;
   tool?: string;
+  mcp_server?: string;
+  mcp_tool?: string;
 };
 
 type Skill = { name: string; description: string };
@@ -19,6 +22,11 @@ function toWs(httpUrl: string): string {
 }
 
 function lineFor(event: LoopEvent): string {
+  if (event.step === "act") {
+    const rest = event.input || event.text || "";
+    const body = [actLabel(event), rest].filter(Boolean).join(" ");
+    return `[${event.step}] ${body}`;
+  }
   const body = event.text || event.observation || event.input || event.tool || "";
   return `[${event.step ?? "?"}] ${body}`;
 }
@@ -40,6 +48,8 @@ export default function App() {
   const [activeModel, setActiveModel] = useState("");
   const [memory, setMemory] = useState("");
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
+  const [used, setUsed] = useState<string[]>([]);
   const [health, setHealth] = useState("connecting…");
   const logRef = useRef<HTMLPreElement>(null);
 
@@ -48,6 +58,9 @@ export default function App() {
     setActive(nodeForStep(step));
     if (step === "memory_update") setReuseLit(true);
     if (isFailedObserve(event)) setObserveFail(true);
+    if (event.mcp_server) {
+      setUsed((prev) => (prev.includes(event.mcp_server!) ? prev : [...prev, event.mcp_server!]));
+    }
     setLines((prev) => [...prev, lineFor(event)]);
     if (step === "memory_update") {
       void refreshSide();
@@ -56,12 +69,14 @@ export default function App() {
 
   async function refreshSide() {
     try {
-      const [mem, sk] = await Promise.all([
+      const [mem, sk, mcp] = await Promise.all([
         fetch(`${API}/memory`).then((r) => r.json()),
         fetch(`${API}/skills`).then((r) => r.json()),
+        fetch(`${API}/mcp`).then((r) => r.json()),
       ]);
       setMemory(mem.snapshot ?? "");
       setSkills(sk.skills ?? []);
+      setMcpServers(mcp.servers ?? []);
     } catch {
       /* gateway may be down */
     }
@@ -109,6 +124,7 @@ export default function App() {
     setActive("task");
     setReuseLit(false);
     setObserveFail(false);
+    setUsed([]);
     setLines((prev) => [...prev, `[task] ${text}`]);
     const res = await fetch(`${API}/runs`, {
       method: "POST",
@@ -134,6 +150,11 @@ export default function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ note: "" }),
     });
+  }
+
+  async function reloadMcp() {
+    await fetch(`${API}/mcp/reload`, { method: "POST" });
+    await refreshSide();
   }
 
   async function onModel(name: string) {
@@ -234,6 +255,23 @@ export default function App() {
                   <li key={s.name}>
                     <b>{s.name}</b>
                     <div>{s.description}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <label>MCPs this run</label>
+              <button type="button" onClick={() => void reloadMcp()}>Reload</button>
+              <ul className="skills mcp-list">
+                {mcpServers.length === 0 && <li>(none configured)</li>}
+                {mcpServers.map((s) => (
+                  <li key={s.name} className={used.includes(s.name) ? "used" : ""}>
+                    <b>{s.name}</b>
+                    <div>
+                      {s.connected ? "connected" : s.enabled ? "error" : "disabled"}
+                      {used.includes(s.name) ? " · used" : ""}
+                      {s.last_error ? ` · ${s.last_error}` : ""}
+                    </div>
                   </li>
                 ))}
               </ul>

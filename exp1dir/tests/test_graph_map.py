@@ -10,3 +10,15 @@ def test_react_loop_map_matches_shared():
         assert node in text
     for step in data["steps"]:
         assert step in text
+
+
+def test_web_mcp_helpers_exist():
+    root = Path(__file__).resolve().parent.parent
+    mcp = (root / "web" / "src" / "mcp.ts").read_text(encoding="utf-8")
+    assert "export function actLabel" in mcp
+    assert "export function usedMcps" in mcp
+    app = (root / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
+    assert "MCPs this run" in app
+    assert "actLabel" in app
+    assert "/mcp/reload" in app or "/mcp" in app
+

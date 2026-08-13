@@ -301,6 +301,14 @@ button:disabled {
   font-weight: 500;
 }
 
+.mcp-list b {
+  color: var(--ink);
+}
+
+.mcp-list li.used b {
+  color: var(--accent);
+}
+
 @media (max-width: 960px) {
   .board {
     grid-template-columns: 1fr;
