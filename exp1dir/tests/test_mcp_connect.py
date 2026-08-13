@@ -27,6 +27,19 @@ class HungTool:
         time.sleep(2)
 
 
+class AsyncOnlyTool:
+    name = "search"
+    description = "s"
+    args_schema = SearchArgs
+    func = None
+
+    def invoke(self, kwargs):
+        raise NotImplementedError("StructuredTool does not support sync invocation.")
+
+    async def ainvoke(self, kwargs):
+        return "async-ok"
+
+
 class FakeClient:
     tools = [FakeTool()]
 
@@ -77,3 +90,11 @@ def test_connect_wrapper_does_not_hang_on_timeout(monkeypatch):
     elapsed = time.monotonic() - start
     assert raised
     assert elapsed < 1.0
+
+
+def test_connect_wrapper_calls_ainvoke_for_async_only_tools(monkeypatch):
+    FakeClient.tools = [AsyncOnlyTool()]
+    monkeypatch.setattr("langchain_mcp_adapters.client.MultiServerMCPClient", FakeClient)
+    spec = ServerSpec(name="web", transport="http", url="https://x/mcp", timeout=5)
+    fn = connect_server(spec)[0]["fn"]
+    assert fn(query="q") == "async-ok"

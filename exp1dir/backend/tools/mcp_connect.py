@@ -33,6 +33,9 @@ def connect_server(spec: ServerSpec) -> list[dict]:
             def make(tool=t):
                 def fn(**kwargs):
                     def call():
+                        ainvoke = getattr(tool, "ainvoke", None)
+                        if ainvoke is not None:
+                            return asyncio.run(ainvoke(kwargs))
                         return tool.invoke(kwargs)
                     pool = ThreadPoolExecutor(max_workers=1)
                     fut = pool.submit(call)
