@@ -7,6 +7,7 @@ from backend.agent.run_manager import RunManager
 from backend.llm.ollama import ModelError, list_models, resolve_active, set_active
 from backend.memory.sessions import SessionStore
 from backend.memory.store import MemoryStore, ensure_home
+from backend.tools.mcp import McpRegistry
 from backend.tools.skill_tool import skill_index
 
 
@@ -28,13 +29,16 @@ class InterruptIn(BaseModel):
 
 def create_app(paths, llm, settings: dict):
     ensure_home(paths)
-    mgr = RunManager(paths, llm)
+    mcp = McpRegistry(paths)
+    mcp.reload()
+    mgr = RunManager(paths, llm, mcp=mcp)
 
     app = FastAPI()
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
     app.state.mgr = mgr
     app.state.paths = paths
     app.state.settings = settings
+    app.state.mcp = mcp
 
     def tags():
         return list_models(settings["ollama_base_url"], settings.get("ollama_api_key", ""))

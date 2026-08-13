@@ -43,9 +43,10 @@ def build_controlled_graph(paths, llm, emit, tools, control):
 
 
 class RunManager:
-    def __init__(self, paths, llm):
+    def __init__(self, paths, llm, mcp=None):
         self.paths = paths
         self.llm = llm
+        self.mcp = mcp
         self.runs = {}
         self.listeners = []
 
@@ -73,7 +74,8 @@ class RunManager:
                 fn(event)
 
         def worker():
-            tools = build_tool_fns(self.paths)
+            extra = self.mcp.tool_fns() if self.mcp else {}
+            tools = {**build_tool_fns(self.paths), **extra}
             graph = build_controlled_graph(self.paths, self.llm, emit, tools, control)
             rec["result"] = graph.invoke(
                 {
