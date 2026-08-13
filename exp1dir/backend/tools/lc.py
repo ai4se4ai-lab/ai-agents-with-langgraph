@@ -51,3 +51,21 @@ def langchain_tools(paths):
         return fns["search_sessions"](query)
 
     return [read_file, write_file, list_dir, shell, web_fetch, memory, skill_manage, load_skill, search_sessions]
+
+
+def bindable_tools(paths, tools: dict):
+    from langchain_core.tools import StructuredTool
+    builtin = {t.name: t for t in langchain_tools(paths)}
+    out = []
+    for name, fn in tools.items():
+        if name in builtin:
+            out.append(builtin[name])
+        else:
+            out.append(
+                StructuredTool.from_function(
+                    func=fn,
+                    name=name,
+                    description=(fn.__doc__ or name),
+                )
+            )
+    return out

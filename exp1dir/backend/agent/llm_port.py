@@ -59,9 +59,12 @@ class OllamaLLM:
                 lc.append(AIMessage(content=m.get("content") or ""))
         if tools:
             from backend.paths import HermesPaths
-            from backend.tools.lc import langchain_tools
-
-            chat = chat.bind_tools(langchain_tools(HermesPaths.default()))
+            from backend.tools.lc import bindable_tools
+            paths = HermesPaths.default()
+            if isinstance(tools, dict):
+                chat = chat.bind_tools(bindable_tools(paths, tools))
+            else:
+                chat = chat.bind_tools(tools)
         msg = chat.invoke(lc)
         content = getattr(msg, "content", "") or ""
         tcs = []
