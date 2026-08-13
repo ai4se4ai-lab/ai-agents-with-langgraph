@@ -115,8 +115,7 @@ export default function App() {
   const [task, setTask] = useState("");
   const [runId, setRunId] = useState<string | null>(null);
   const [active, setActive] = useState("task");
-  const [reuseLit, setReuseLit] = useState(false);
-  const [observeFail, setObserveFail] = useState(false);
+  const [activeFail, setActiveFail] = useState(false);
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [activeModel, setActiveModel] = useState("");
@@ -129,9 +128,8 @@ export default function App() {
 
   function applyEvent(event: LoopEvent) {
     const step = event.step ?? "";
-    setActive(nodeForStep(step));
-    if (step === "memory_update") setReuseLit(true);
-    if (isFailedObserve(event)) setObserveFail(true);
+    setActive(step === "memory_update" ? "reuse" : nodeForStep(step));
+    setActiveFail(isFailedObserve(event));
     if (event.mcp_server) {
       setUsed((prev) => (prev.includes(event.mcp_server!) ? prev : [...prev, event.mcp_server!]));
     }
@@ -139,7 +137,6 @@ export default function App() {
     if (step === "memory_update") {
       void refreshSide();
       setRunId(null);
-      setActive("task");
     }
   }
 
@@ -214,8 +211,7 @@ export default function App() {
     const text = task.trim();
     if (!text) return;
     setActive("task");
-    setReuseLit(false);
-    setObserveFail(false);
+    setActiveFail(false);
     setUsed([]);
     setEntries((prev) => [...prev, { step: "task", body: text }]);
     const res = await fetch(`${API}/runs`, {
@@ -226,7 +222,7 @@ export default function App() {
     if (!res.ok) {
       const err = await res.text();
       setEntries((prev) => [...prev, { step: "error", body: err }]);
-      setObserveFail(true);
+      setActiveFail(true);
       setActive(nodeForStep("error"));
       return;
     }
@@ -295,8 +291,8 @@ export default function App() {
           <h2>graph</h2>
           <div className="rail">
             {NODES.map((node) => {
-              const lit = node === active || (node === "reuse" && reuseLit);
-              const fail = node === "observe" && observeFail;
+              const fail = node === active && activeFail;
+              const lit = node === active && !fail;
               return (
                 <div key={node} className={`node${lit ? " lit" : ""}${fail ? " fail" : ""}`}>
                   <span className="dot" />
