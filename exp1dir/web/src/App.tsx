@@ -138,6 +138,8 @@ export default function App() {
     setEntries((prev) => [...prev, entryFor(event)]);
     if (step === "memory_update") {
       void refreshSide();
+      setRunId(null);
+      setActive("task");
     }
   }
 
@@ -235,7 +237,7 @@ export default function App() {
 
   async function stop() {
     if (!runId) return;
-    await fetch(`${API}/runs/${runId}/interrupt`, {
+    await fetch(`${API}/runs/${runId}/stop`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ note: "" }),

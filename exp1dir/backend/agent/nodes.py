@@ -133,7 +133,8 @@ def act(state, paths, llm, tools, emit, control=None):
         if control and (control.get("cancel") or control.get("did_interrupt")):
             obs = f"user interrupted: {control.get('note') or ''}".strip()
             observations.append({"tool_call_id": cid, "name": name, "content": obs})
-            return {"pending_observations": observations, "status": "interrupted", "last_observation": obs}
+            status = "stopped" if control.get("hard_stop") else "interrupted"
+            return {"pending_observations": observations, "status": status, "last_observation": obs}
         observations.append({"tool_call_id": cid, "name": name, "content": str(obs)})
     return {"pending_observations": observations}
 
@@ -212,6 +213,8 @@ def wait_redirect(state, paths, llm, tools, emit, control=None):
 
 
 def route_after_observe(state) -> str:
+    if state.get("status") == "stopped":
+        return "reflect"
     if state.get("status") == "interrupted":
         return "wait_redirect"
     return "reason"

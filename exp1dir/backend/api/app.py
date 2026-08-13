@@ -102,6 +102,11 @@ def create_app(paths, llm, settings: dict):
         mgr.interrupt(run_id, body.note)
         return {"ok": True}
 
+    @app.post("/runs/{run_id}/stop")
+    def stop(run_id: str, body: InterruptIn):
+        mgr.stop(run_id, body.note)
+        return {"ok": True}
+
     @app.post("/runs/{run_id}/message")
     def message(run_id: str, body: MessageIn):
         mgr.send_message(run_id, body.text)

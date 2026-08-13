@@ -35,7 +35,9 @@ def build_controlled_graph(paths, llm, emit, tools, control):
     g.add_edge("load_context", "reason")
     g.add_conditional_edges("reason", route_after_reason, {"act": "act", "reflect": "reflect"})
     g.add_edge("act", "observe")
-    g.add_conditional_edges("observe", route_after_observe, {"wait_redirect": "wait_redirect", "reason": "reason"})
+    g.add_conditional_edges(
+        "observe", route_after_observe, {"wait_redirect": "wait_redirect", "reason": "reason", "reflect": "reflect"}
+    )
     g.add_edge("wait_redirect", "reason")
     g.add_edge("reflect", "update_memory")
     g.add_edge("update_memory", END)
@@ -67,6 +69,7 @@ class RunManager:
             "redirect_event": threading.Event(),
             "redirect_text": "",
             "did_interrupt": False,
+            "hard_stop": False,
         }
         rec = {"id": run_id, "control": control, "result": None, "events": [], "thread": None, "status": "running"}
         self.runs[run_id] = rec
@@ -115,6 +118,15 @@ class RunManager:
         rec["control"]["cancel"] = True
         rec["control"]["note"] = note
         rec["control"]["did_interrupt"] = True
+        kill_current_shell()
+
+    def stop(self, run_id: str, note: str = "") -> None:
+        """Hard stop: cancel the in-flight tool and end the run instead of waiting to redirect."""
+        rec = self.runs[run_id]
+        rec["control"]["cancel"] = True
+        rec["control"]["note"] = note
+        rec["control"]["did_interrupt"] = True
+        rec["control"]["hard_stop"] = True
         kill_current_shell()
 
     def send_message(self, run_id: str, text: str) -> None:
