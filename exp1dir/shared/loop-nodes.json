@@ -1,0 +1,12 @@
+{
+  "nodes": ["task", "reason", "act", "observe", "success", "learn", "memory_update", "reuse"],
+  "steps": {
+    "reason": "reason",
+    "act": "act",
+    "observe": "observe",
+    "success": "success",
+    "learn": "learn",
+    "memory_update": "memory_update",
+    "error": "observe"
+  }
+}
