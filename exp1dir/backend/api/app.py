@@ -8,6 +8,7 @@ from backend.llm.ollama import ModelError, list_models, resolve_active, set_acti
 from backend.memory.sessions import SessionStore
 from backend.memory.store import MemoryStore, ensure_home
 from backend.tools.mcp import McpRegistry
+from backend.tools.mcp_config import UnknownMcpServer, set_server_enabled
 from backend.tools.skill_tool import skill_index
 
 
@@ -25,6 +26,10 @@ class MessageIn(BaseModel):
 
 class InterruptIn(BaseModel):
     note: str = ""
+
+
+class McpEnabledIn(BaseModel):
+    enabled: bool
 
 
 def create_app(paths, llm, settings: dict):
@@ -114,6 +119,24 @@ def create_app(paths, llm, settings: dict):
     def runs():
         rows = SessionStore(paths).recent()
         return {"runs": [{"id": r[0], "task": r[1], "summary": r[2], "status": r[3]} for r in rows]}
+
+    @app.get("/mcp")
+    def mcp_status():
+        return app.state.mcp.status()
+
+    @app.post("/mcp/reload")
+    def mcp_reload():
+        return app.state.mcp.reload()
+
+    @app.post("/mcp/{name}/enabled")
+    def mcp_enabled(name: str, body: McpEnabledIn):
+        try:
+            set_server_enabled(paths.config_file, name, body.enabled)
+        except UnknownMcpServer:
+            raise HTTPException(404, f"unknown MCP server: {name}")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return app.state.mcp.reload()
 
     def _run_finished(run_id: str, events: list) -> bool:
         if any(e.get("step") == "memory_update" for e in events):
