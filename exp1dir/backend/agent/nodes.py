@@ -5,6 +5,13 @@ from backend.agent.prompts import SYSTEM
 from backend.memory.store import MemoryStore, ensure_home
 from backend.tools.skill_tool import skill_index
 
+REFLECT_PROMPT = (
+    "The task is done (or stopped). What did I learn that would help a future task? "
+    "Reply with JSON only: {\"memory\": [{\"action\": \"add|replace|remove\", \"target\": \"MEMORY|USER\", "
+    "\"text\": \"...\", \"old_text\": \"\"}], \"skills\": [{\"action\": \"create|update\", \"name\": \"...\", "
+    "\"description\": \"...\", \"body\": \"...\"}]}. If nothing durable, use empty arrays."
+)
+
 
 def load_context(state, paths, llm, tools, emit):
     ensure_home(paths)
@@ -93,12 +100,47 @@ def observe(state, paths, llm, tools, emit):
 
 
 def reflect(state, paths, llm, tools, emit):
-    emit(make_event(state["run_id"], "learn", cycle=state["cycle"], text="(no learning yet)", model=state.get("active_model", "")))
-    return {"reflection": "", "memory_writes": []}
+    messages = list(state["messages"]) + [{"role": "user", "content": REFLECT_PROMPT}]
+    try:
+        resp = llm.invoke(messages, tools=[])
+        raw = resp.content
+    except Exception as e:
+        emit(make_event(state["run_id"], "learn", cycle=state["cycle"], text=f"ERROR: {e}"))
+        return {"reflection": "", "memory_writes": []}
+    writes = []
+    try:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        data = json.loads(raw[start : end + 1]) if start >= 0 else {}
+        for w in data.get("memory") or []:
+            writes.append({**w, "kind": "memory"})
+        for s in data.get("skills") or []:
+            writes.append({**s, "kind": "skill"})
+    except Exception:
+        writes = []
+    emit(make_event(state["run_id"], "learn", cycle=state["cycle"], text=raw, model=state.get("active_model", "")))
+    return {"reflection": raw, "memory_writes": writes}
 
 
 def update_memory(state, paths, llm, tools, emit):
-    emit(make_event(state["run_id"], "memory_update", cycle=state["cycle"], text="none", model=state.get("active_model", "")))
+    from backend.memory.sessions import SessionStore
+    from backend.memory.store import MemoryStore
+    from backend.tools.skill_tool import skill_manage
+    from backend.tools.memory_tool import memory_tool
+
+    store = MemoryStore(paths)
+    applied = []
+    for w in state.get("memory_writes") or []:
+        kind = w.get("kind") or ("skill" if "name" in w and "body" in w else "memory")
+        if kind == "skill":
+            applied.append(skill_manage(paths, w.get("action", "create"), w.get("name", ""), w.get("description", ""), w.get("body", "")))
+        else:
+            applied.append(
+                memory_tool(store, w.get("action", "add"), w.get("target", "MEMORY"), w.get("text", ""), w.get("old_text", ""))
+            )
+    summary = "; ".join(applied) if applied else "none"
+    emit(make_event(state["run_id"], "memory_update", cycle=state["cycle"], text=summary, model=state.get("active_model", "")))
+    SessionStore(paths).save(state["run_id"], state.get("task", ""), state.get("final_answer", "")[:500], state.get("status", ""))
     return {}
 
 
