@@ -68,8 +68,14 @@ def act(state, paths, llm, tools, emit, control=None):
         name = call["name"] if isinstance(call, dict) else call.name
         args = call["args"] if isinstance(call, dict) else call.args
         cid = call.get("id") if isinstance(call, dict) else call.id
-        emit(make_event(state["run_id"], "act", cycle=state["cycle"], tool=name, input=json.dumps(args), model=state.get("active_model", "")))
         fn = tools.get(name)
+        mcp_server = getattr(fn, "_mcp_server", "") if fn is not None else ""
+        mcp_tool = getattr(fn, "_mcp_tool", "") if fn is not None else ""
+        emit(make_event(
+            state["run_id"], "act", cycle=state["cycle"], tool=name,
+            input=json.dumps(args), model=state.get("active_model", ""),
+            mcp_server=mcp_server, mcp_tool=mcp_tool,
+        ))
         if fn is None:
             obs = f"ERROR: unknown tool {name}"
         else:

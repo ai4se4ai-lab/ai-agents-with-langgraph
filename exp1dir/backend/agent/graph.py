@@ -28,7 +28,7 @@ def build_graph(paths, llm, emit, tools=None):
     return g.compile()
 
 
-def run_task(paths, llm, task: str, max_cycles: int = 15, on_event=None, model: str = "scripted"):
+def run_task(paths, llm, task: str, max_cycles: int = 15, on_event=None, model: str = "scripted", tools=None):
     events = []
 
     def emit(event):
@@ -36,7 +36,7 @@ def run_task(paths, llm, task: str, max_cycles: int = 15, on_event=None, model: 
         if on_event:
             on_event(event)
 
-    graph = build_graph(paths, llm, emit)
+    graph = build_graph(paths, llm, emit, tools=tools)
     result = graph.invoke(
         {
             "task": task,

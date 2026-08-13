@@ -19,6 +19,8 @@ def make_event(
     observation: str = "",
     text: str = "",
     model: str = "",
+    mcp_server: str = "",
+    mcp_tool: str = "",
 ) -> dict[str, Any]:
     return {
         "run_id": run_id,
@@ -29,6 +31,8 @@ def make_event(
         "observation": observation,
         "text": text,
         "model": model,
+        "mcp_server": mcp_server,
+        "mcp_tool": mcp_tool,
     }
 
 

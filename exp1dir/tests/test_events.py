@@ -18,3 +18,11 @@ def test_event_log_append_and_replay(tmp_path):
     replay = log.replay()
     assert replay[0]["step"] == "reason"
     assert replay[0]["text"] == "thinking"
+
+
+def test_make_event_includes_mcp_fields():
+    e = make_event("r", "act", tool="web__search")
+    assert e["mcp_server"] == ""
+    assert e["mcp_tool"] == ""
+    e2 = make_event("r", "act", tool="web__search", mcp_server="web", mcp_tool="search")
+    assert e2["mcp_server"] == "web" and e2["mcp_tool"] == "search"
