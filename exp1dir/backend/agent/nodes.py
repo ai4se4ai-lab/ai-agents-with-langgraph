@@ -19,7 +19,13 @@ def load_context(state, paths, llm, tools, emit, control=None):
     snapshot = store.snapshot()
     index = skill_index(paths)
     run_id = state.get("run_id") or uuid.uuid4().hex
-    sys_prompt = SYSTEM.format(memory_snapshot=snapshot, skill_index=json.dumps(index))
+    mcp_lines = []
+    for name, fn in (tools or {}).items():
+        if getattr(fn, "_mcp_server", ""):
+            doc = (fn.__doc__ or "").strip().splitlines()[0] if fn.__doc__ else ""
+            mcp_lines.append(f"- {name}: {doc}".rstrip(": "))
+    mcp_index = "\n".join(mcp_lines) if mcp_lines else "(none)"
+    sys_prompt = SYSTEM.format(memory_snapshot=snapshot, skill_index=json.dumps(index), mcp_index=mcp_index)
     messages = [{"role": "system", "content": sys_prompt}, {"role": "user", "content": state["task"]}]
     return {
         "run_id": run_id,

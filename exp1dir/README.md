@@ -63,7 +63,39 @@ On startup the TUI prints Ollama health and the active model.
 - Type a task in the editor and press **Ctrl+Enter** to send.
 - **Ctrl+C** interrupts the current run; your next message redirects that run.
 
-Other commands: `/memory`, `/skills`, `/history`, `/quit`.
+Other commands: `/memory`, `/skills`, `/history`, `/mcp`, `/quit`.
+
+## MCP servers
+
+Edit `exp1dir/.hermes/config.json` and add `mcp_servers`. Each entry is either **stdio** (`command` / `args` / `env`) or **HTTP** (`url` / `headers`). Put secrets in `.env` and reference them as `${VAR}` (or `${env:VAR}`).
+
+After editing, run **`/mcp reload`** in the TUI or click **Reload** in React. The **next** task binds the new tools; an in-flight run keeps its snapshot.
+
+- **`/mcp`** — list servers (transport, enabled, connected, tools, errors).
+- **`/mcp enable <name>`** / **`/mcp disable <name>`** — persist `enabled` and reload (does not drop `model` or other servers).
+
+Example (do not commit API keys):
+
+```json
+{
+  "model": "qwen2.5-coder:7b",
+  "mcp_servers": {
+    "firecrawl": {
+      "url": "https://mcp.firecrawl.dev/mcp",
+      "headers": { "Authorization": "Bearer ${FIRECRAWL_API_KEY}" },
+      "enabled": true
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      "env": {},
+      "enabled": false
+    }
+  }
+}
+```
+
+In React, Act labels MCP calls as `server / tool`. The side list marks servers used this run.
 
 ## React loop graph
 

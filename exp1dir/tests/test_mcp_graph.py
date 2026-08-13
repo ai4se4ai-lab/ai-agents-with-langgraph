@@ -66,3 +66,23 @@ def test_run_manager_snapshots_mcp_tools(tmp_path: Path):
     assert result["status"] == "success"
     assert acts and acts[0]["mcp_server"] == "web"
     assert any("ok:hi" in (e.get("observation") or "") for e in mgr.runs[run_id]["events"])
+
+
+def test_system_prompt_lists_mcp_tools(tmp_path: Path):
+    p = HermesPaths(root=tmp_path)
+    ensure_home(p)
+    def search(query: str = "") -> str:
+        """Search the web."""
+        return "ok"
+    search._mcp_server = "web"
+    search._mcp_tool = "search"
+    tools = {**build_tool_fns(p), "web__search": search}
+    llm = ScriptedLLM(
+        [
+            LLMResponse(content="done", tool_calls=[]),
+            LLMResponse(content='{"memory": [], "skills": []}', tool_calls=[]),
+        ]
+    )
+    result = run_task(p, llm, "hi", tools=tools)
+    sysmsg = result["messages"][0]["content"]
+    assert "web__search" in sysmsg

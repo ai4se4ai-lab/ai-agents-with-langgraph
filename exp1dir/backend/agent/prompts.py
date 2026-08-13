@@ -12,4 +12,8 @@ Memory snapshot below is frozen for this run. Skill index lists name+description
 
 ## Skills
 {skill_index}
+
+## MCP tools
+{mcp_index}
+MCP tools are named server__tool. Use them for external APIs and web search when they fit the task.
 """
