@@ -13,7 +13,7 @@ REFLECT_PROMPT = (
 )
 
 
-def load_context(state, paths, llm, tools, emit):
+def load_context(state, paths, llm, tools, emit, control=None):
     ensure_home(paths)
     store = MemoryStore(paths)
     snapshot = store.snapshot()
@@ -38,7 +38,7 @@ def load_context(state, paths, llm, tools, emit):
     }
 
 
-def reason(state, paths, llm, tools, emit):
+def reason(state, paths, llm, tools, emit, control=None):
     if state.get("status") == "running" and state.get("cycle", 0) >= state.get("max_cycles", 15):
         emit(make_event(state["run_id"], "error", cycle=state["cycle"], text="step limit"))
         return {"status": "capped", "final_answer": state.get("final_answer") or "stopped: step limit"}
@@ -62,7 +62,7 @@ def reason(state, paths, llm, tools, emit):
     return {"messages": messages, "pending_tool_calls": [], "final_answer": resp.content, "status": "success"}
 
 
-def act(state, paths, llm, tools, emit):
+def act(state, paths, llm, tools, emit, control=None):
     observations = []
     for call in state.get("pending_tool_calls") or []:
         name = call["name"] if isinstance(call, dict) else call.name
@@ -79,11 +79,15 @@ def act(state, paths, llm, tools, emit):
                 obs = fn(*args.values()) if args else fn()
             except Exception as e:
                 obs = f"ERROR: {e}"
+        if control and (control.get("cancel") or control.get("did_interrupt")):
+            obs = f"user interrupted: {control.get('note') or ''}".strip()
+            observations.append({"tool_call_id": cid, "name": name, "content": obs})
+            return {"pending_observations": observations, "status": "interrupted", "last_observation": obs}
         observations.append({"tool_call_id": cid, "name": name, "content": str(obs)})
     return {"pending_observations": observations}
 
 
-def observe(state, paths, llm, tools, emit):
+def observe(state, paths, llm, tools, emit, control=None):
     messages = list(state["messages"])
     chunks = []
     for obs in state.get("pending_observations") or []:
@@ -99,7 +103,7 @@ def observe(state, paths, llm, tools, emit):
     }
 
 
-def reflect(state, paths, llm, tools, emit):
+def reflect(state, paths, llm, tools, emit, control=None):
     messages = list(state["messages"]) + [{"role": "user", "content": REFLECT_PROMPT}]
     try:
         resp = llm.invoke(messages, tools=[])
@@ -122,7 +126,7 @@ def reflect(state, paths, llm, tools, emit):
     return {"reflection": raw, "memory_writes": writes}
 
 
-def update_memory(state, paths, llm, tools, emit):
+def update_memory(state, paths, llm, tools, emit, control=None):
     from backend.memory.sessions import SessionStore
     from backend.memory.store import MemoryStore
     from backend.tools.skill_tool import skill_manage
@@ -142,6 +146,24 @@ def update_memory(state, paths, llm, tools, emit):
     emit(make_event(state["run_id"], "memory_update", cycle=state["cycle"], text=summary, model=state.get("active_model", "")))
     SessionStore(paths).save(state["run_id"], state.get("task", ""), state.get("final_answer", "")[:500], state.get("status", ""))
     return {}
+
+
+def wait_redirect(state, paths, llm, tools, emit, control=None):
+    control = control or {}
+    ev = control.get("redirect_event")
+    if ev is not None:
+        ev.wait(timeout=300)
+    control["did_interrupt"] = False
+    control["note"] = ""
+    text = (control.get("redirect_text") or "").strip()
+    messages = list(state["messages"]) + [{"role": "user", "content": text or "(continue)"}]
+    return {"messages": messages, "status": "running", "pending_tool_calls": []}
+
+
+def route_after_observe(state) -> str:
+    if state.get("status") == "interrupted":
+        return "wait_redirect"
+    return "reason"
 
 
 def route_after_reason(state) -> str:
