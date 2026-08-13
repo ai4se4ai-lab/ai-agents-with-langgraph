@@ -110,4 +110,5 @@ def format_mcp_status(payload: dict) -> str:
 
 
 def default_connector(spec):
-    raise RuntimeError("MCP connector not wired; pass connector= in tests")
+    from backend.tools.mcp_connect import connect_server
+    return connect_server(spec)
