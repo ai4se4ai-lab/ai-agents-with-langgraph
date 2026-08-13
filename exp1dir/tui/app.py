@@ -78,6 +78,22 @@ class HermesApp(App):
             if name == "interrupt":
                 self.action_interrupt()
                 return
+            if name == "mcp":
+                from backend.tools.mcp import format_mcp_status
+                try:
+                    if not args:
+                        data = self.client.mcp()
+                    elif args[0] == "reload":
+                        data = self.client.mcp_reload()
+                    elif args[0] in ("enable", "disable") and len(args) >= 2:
+                        data = self.client.mcp_enabled(args[1], args[0] == "enable")
+                    else:
+                        log.write_line("usage: /mcp | /mcp reload | /mcp enable <name> | /mcp disable <name>")
+                        return
+                    log.write_line(format_mcp_status(data))
+                except Exception as e:
+                    log.write_line(f"mcp error: {e}")
+                return
             log.write_line(f"unknown command /{name}")
             return
         if self.awaiting_redirect and self.run_id:
@@ -94,4 +110,7 @@ class HermesApp(App):
             async for raw in ws:
                 e = json.loads(raw)
                 step = e.get("step", "")
-                log.write_line(f"[{step}] {e.get('text') or e.get('observation') or e.get('input') or ''}")
+                if step == "act" and e.get("mcp_server"):
+                    log.write_line(f"[act] {e['mcp_server']} / {e.get('mcp_tool')} ({e.get('tool')}) {e.get('input') or ''}")
+                else:
+                    log.write_line(f"[{step}] {e.get('text') or e.get('observation') or e.get('input') or ''}")

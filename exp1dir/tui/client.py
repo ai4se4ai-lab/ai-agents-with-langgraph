@@ -34,3 +34,16 @@ class GatewayClient:
 
     def history(self):
         return self._http.get(f"{self.base}/runs").json()
+
+    def mcp(self):
+        return self._http.get(f"{self.base}/mcp").json()
+
+    def mcp_reload(self):
+        r = self._http.post(f"{self.base}/mcp/reload")
+        r.raise_for_status()
+        return r.json()
+
+    def mcp_enabled(self, name: str, enabled: bool):
+        r = self._http.post(f"{self.base}/mcp/{name}/enabled", json={"enabled": enabled})
+        r.raise_for_status()
+        return r.json()

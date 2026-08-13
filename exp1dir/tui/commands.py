@@ -5,6 +5,7 @@ COMMANDS = [
     {"name": "interrupt", "help": "Stop current act and wait to redirect"},
     {"name": "history", "help": "Past runs"},
     {"name": "quit", "help": "Exit"},
+    {"name": "mcp", "help": "List, enable, disable, or reload MCP servers"},
 ]
 
 

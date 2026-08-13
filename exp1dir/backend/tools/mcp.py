@@ -90,5 +90,24 @@ class McpRegistry:
         return self.status()
 
 
+def format_mcp_status(payload: dict) -> str:
+    lines = []
+    if payload.get("parse_error"):
+        lines.append(f"parse_error: {payload['parse_error']}")
+    servers = payload.get("servers") or []
+    if not servers:
+        lines.append("mcp: (none)")
+        return "\n".join(lines)
+    for s in servers:
+        lines.append(
+            f"mcp: {s['name']} transport={s.get('transport') or '-'} "
+            f"enabled={str(s.get('enabled')).lower()} connected={str(s.get('connected')).lower()} "
+            f"tools={len(s.get('tools') or [])} err={s.get('last_error') or '-'}"
+        )
+        if s.get("tools"):
+            lines.append("  tools: " + ", ".join(s["tools"]))
+    return "\n".join(lines)
+
+
 def default_connector(spec):
     raise RuntimeError("MCP connector not wired; pass connector= in tests")
