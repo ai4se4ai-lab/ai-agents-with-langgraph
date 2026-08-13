@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exp1-hermes"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "langgraph>=0.6",
+  "langchain-core>=0.3",
+  "langchain-ollama>=0.3",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "httpx>=0.27",
+  "python-dotenv>=1.0",
+  "textual>=1.0",
+  "html2text>=2024.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[project.scripts]
+hermes = "tui.main:main"
+
+[tool.setuptools.packages.find]
+include = ["backend*", "tui*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
