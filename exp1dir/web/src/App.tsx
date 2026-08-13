@@ -123,15 +123,25 @@ export default function App() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [used, setUsed] = useState<string[]>([]);
+  const [resourcesByNode, setResourcesByNode] = useState<Record<string, string[]>>({});
   const [health, setHealth] = useState("connecting…");
   const logRef = useRef<HTMLDivElement>(null);
 
   function applyEvent(event: LoopEvent) {
     const step = event.step ?? "";
-    setActive(step === "memory_update" ? "reuse" : nodeForStep(step));
+    const node = step === "memory_update" ? "reuse" : nodeForStep(step);
+    setActive(node);
     setActiveFail(isFailedObserve(event));
     if (event.mcp_server) {
       setUsed((prev) => (prev.includes(event.mcp_server!) ? prev : [...prev, event.mcp_server!]));
+    }
+    const resource = actLabel(event);
+    if (resource) {
+      setResourcesByNode((prev) => {
+        const existing = prev[node] ?? [];
+        if (existing.includes(resource)) return prev;
+        return { ...prev, [node]: [...existing, resource] };
+      });
     }
     setEntries((prev) => [...prev, entryFor(event)]);
     if (step === "memory_update") {
@@ -213,6 +223,7 @@ export default function App() {
     setActive("task");
     setActiveFail(false);
     setUsed([]);
+    setResourcesByNode({});
     setEntries((prev) => [...prev, { step: "task", body: text }]);
     const res = await fetch(`${API}/runs`, {
       method: "POST",
@@ -293,10 +304,20 @@ export default function App() {
             {NODES.map((node) => {
               const fail = node === active && activeFail;
               const lit = node === active && !fail;
+              const resources = resourcesByNode[node] ?? [];
               return (
                 <div key={node} className={`node${lit ? " lit" : ""}${fail ? " fail" : ""}`}>
                   <span className="dot" />
-                  <span className="label">{node}</span>
+                  <div className="node-body">
+                    <span className="label">{node}</span>
+                    {resources.length > 0 && (
+                      <ul className="node-sub">
+                        {resources.map((res) => (
+                          <li key={res}>{res}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -344,7 +365,7 @@ export default function App() {
                 {skills.map((s) => (
                   <li key={s.name}>
                     <b>{s.name}</b>
-                    <div>{s.description}</div>
+                    <div className="skill-desc-scroll">{s.description}</div>
                   </li>
                 ))}
               </ul>

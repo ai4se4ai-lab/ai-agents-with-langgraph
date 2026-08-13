@@ -191,11 +191,50 @@ button:disabled {
 .node {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 8px 0;
   color: var(--muted);
   z-index: 1;
+}
+
+.node-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.node-sub {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.node-sub li {
+  position: relative;
+  padding-left: 14px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--muted);
+  opacity: 0.85;
+  word-break: break-word;
+}
+
+.node-sub li::before {
+  content: "↳";
+  position: absolute;
+  left: 0;
+  color: var(--line);
+}
+
+.node.lit .node-sub li {
+  color: var(--accent);
+  opacity: 0.9;
 }
 
 .dot {
@@ -378,6 +417,14 @@ button:disabled {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.skill-desc-scroll {
+  max-height: 220px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 8px;
 }
 
 .skills li {
