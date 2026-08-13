@@ -106,3 +106,24 @@ def parse_mcp_servers(data: dict, env: dict[str, str]) -> list[ServerSpec]:
             spec.error = "missing command or url"
         out.append(spec)
     return out
+
+
+class UnknownMcpServer(KeyError):
+    pass
+
+
+def write_config(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def set_server_enabled(path: Path, name: str, enabled: bool) -> dict:
+    data, err = read_config(path)
+    if err:
+        raise ValueError(err)
+    servers = data.setdefault("mcp_servers", {})
+    if name not in servers or not isinstance(servers[name], dict):
+        raise UnknownMcpServer(name)
+    servers[name]["enabled"] = bool(enabled)
+    write_config(path, data)
+    return data

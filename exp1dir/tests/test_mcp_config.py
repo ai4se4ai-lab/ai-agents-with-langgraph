@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from backend.tools.mcp_config import (
     BUILTIN_TOOL_NAMES,
@@ -5,6 +6,7 @@ from backend.tools.mcp_config import (
     flatten_tool_name,
     parse_mcp_servers,
     read_config,
+    set_server_enabled,
 )
 
 
@@ -51,3 +53,35 @@ def test_flatten_and_builtins():
     assert flatten_tool_name("a b", "x.y") == "a_b__x_y"
     assert "web_fetch" in BUILTIN_TOOL_NAMES
     assert "shell" in BUILTIN_TOOL_NAMES
+
+
+def test_set_server_enabled_preserves_model_and_others(tmp_path: Path):
+    p = tmp_path / "config.json"
+    p.write_text(
+        json.dumps(
+            {
+                "model": "alpha",
+                "mcp_servers": {
+                    "web": {"url": "https://x/mcp", "enabled": True},
+                    "fs": {"command": "npx", "args": ["x"]},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    set_server_enabled(p, "web", False)
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["model"] == "alpha"
+    assert data["mcp_servers"]["web"]["enabled"] is False
+    assert data["mcp_servers"]["web"]["url"] == "https://x/mcp"
+    assert "fs" in data["mcp_servers"]
+
+
+def test_set_server_enabled_unknown(tmp_path: Path):
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps({"mcp_servers": {"web": {"url": "https://x"}}}), encoding="utf-8")
+    try:
+        set_server_enabled(p, "nope", True)
+        assert False, "expected KeyError"
+    except KeyError:
+        pass
