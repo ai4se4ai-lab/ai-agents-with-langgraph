@@ -127,7 +127,10 @@ def act(state, paths, llm, tools, emit, control=None):
             try:
                 obs = fn(**args)
             except TypeError:
-                obs = fn(*args.values()) if args else fn()
+                try:
+                    obs = fn(*args.values()) if args else fn()
+                except Exception as e:
+                    obs = f"ERROR: {e}"
             except Exception as e:
                 obs = f"ERROR: {e}"
         if control and (control.get("cancel") or control.get("did_interrupt")):

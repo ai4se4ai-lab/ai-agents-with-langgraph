@@ -2,7 +2,7 @@ import threading
 import uuid
 from functools import partial
 from langgraph.graph import END, START, StateGraph
-from backend.agent.events import EventLog
+from backend.agent.events import EventLog, make_event
 from backend.agent.nodes import (
     act,
     load_context,
@@ -83,29 +83,33 @@ class RunManager:
                 fn(event)
 
         def worker():
-            extra = self.mcp.tool_fns() if self.mcp else {}
-            tools = {**build_tool_fns(self.paths), **extra}
-            graph = build_controlled_graph(self.paths, self.llm, emit, tools, control)
-            rec["result"] = graph.invoke(
-                {
-                    "task": task,
-                    "run_id": run_id,
-                    "messages": [],
-                    "memory_snapshot": "",
-                    "skill_index": [],
-                    "loaded_skills": [],
-                    "cycle": 0,
-                    "max_cycles": 15,
-                    "pending_tool_calls": [],
-                    "pending_observations": [],
-                    "last_observation": "",
-                    "status": "running",
-                    "final_answer": "",
-                    "reflection": "",
-                    "memory_writes": [],
-                    "active_model": model,
-                }
-            )
+            try:
+                extra = self.mcp.tool_fns() if self.mcp else {}
+                tools = {**build_tool_fns(self.paths), **extra}
+                graph = build_controlled_graph(self.paths, self.llm, emit, tools, control)
+                rec["result"] = graph.invoke(
+                    {
+                        "task": task,
+                        "run_id": run_id,
+                        "messages": [],
+                        "memory_snapshot": "",
+                        "skill_index": [],
+                        "loaded_skills": [],
+                        "cycle": 0,
+                        "max_cycles": 15,
+                        "pending_tool_calls": [],
+                        "pending_observations": [],
+                        "last_observation": "",
+                        "status": "running",
+                        "final_answer": "",
+                        "reflection": "",
+                        "memory_writes": [],
+                        "active_model": model,
+                    }
+                )
+            except Exception as e:
+                emit(make_event(run_id, "error", text=f"internal error: {e}"))
+                rec["result"] = {"status": "failed", "final_answer": f"internal error: {e}"}
             rec["status"] = rec["result"].get("status", "success")
 
         t = threading.Thread(target=worker, daemon=True)
