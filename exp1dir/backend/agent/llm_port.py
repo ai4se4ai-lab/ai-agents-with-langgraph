@@ -25,3 +25,46 @@ class ScriptedLLM:
         item = self.responses[self.i]
         self.i += 1
         return item
+
+
+class OllamaLLM:
+    def __init__(self, settings: dict, model: str | None = None):
+        self.settings = settings
+        self._model = model
+
+    def _chat(self):
+        from langchain_ollama import ChatOllama
+        from backend.llm.ollama import list_models, resolve_active
+        from backend.paths import HermesPaths
+
+        paths = HermesPaths.default()
+        tags = list_models(self.settings["ollama_base_url"], self.settings.get("ollama_api_key") or "")
+        name = self._model or resolve_active(paths, tags, self.settings.get("ollama_model") or "")
+        return ChatOllama(model=name, base_url=self.settings["ollama_base_url"])
+
+    def invoke(self, messages: list, tools: list) -> LLMResponse:
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+        chat = self._chat()
+        lc = []
+        for m in messages:
+            role = m.get("role")
+            if role == "system":
+                lc.append(SystemMessage(content=m["content"]))
+            elif role == "user":
+                lc.append(HumanMessage(content=m["content"]))
+            elif role == "tool":
+                lc.append(ToolMessage(content=m["content"], tool_call_id=m.get("tool_call_id") or "t"))
+            else:
+                lc.append(AIMessage(content=m.get("content") or ""))
+        if tools:
+            from backend.paths import HermesPaths
+            from backend.tools.lc import langchain_tools
+
+            chat = chat.bind_tools(langchain_tools(HermesPaths.default()))
+        msg = chat.invoke(lc)
+        content = getattr(msg, "content", "") or ""
+        tcs = []
+        for tc in getattr(msg, "tool_calls", None) or []:
+            tcs.append(ToolCall(id=tc.get("id") or "t", name=tc.get("name"), args=tc.get("args") or {}))
+        return LLMResponse(content=content, tool_calls=tcs)
