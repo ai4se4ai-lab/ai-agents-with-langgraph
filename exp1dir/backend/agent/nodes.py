@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from backend.agent.events import make_event
 from backend.agent.prompts import SYSTEM
@@ -11,6 +12,40 @@ REFLECT_PROMPT = (
     "\"text\": \"...\", \"old_text\": \"\"}], \"skills\": [{\"action\": \"create|update\", \"name\": \"...\", "
     "\"description\": \"...\", \"body\": \"...\"}]}. If nothing durable, use empty arrays."
 )
+
+
+def parse_text_tool_calls(content: str, tool_names: set[str]) -> list[dict]:
+    text = (content or "").strip()
+    if not text or not tool_names:
+        return []
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    blob = fence.group(1).strip() if fence else text
+    try:
+        data = json.loads(blob)
+        candidates = data if isinstance(data, list) else [data]
+    except json.JSONDecodeError:
+        start, end = blob.find("{"), blob.rfind("}")
+        if start < 0 or end <= start:
+            return []
+        try:
+            candidates = [json.loads(blob[start : end + 1])]
+        except json.JSONDecodeError:
+            return []
+    out = []
+    for i, item in enumerate(candidates):
+        if not isinstance(item, dict):
+            continue
+        fn = item.get("function") if isinstance(item.get("function"), dict) else {}
+        name = item.get("name") or fn.get("name")
+        args = item.get("arguments") or item.get("args") or fn.get("arguments") or {}
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = {}
+        if name in tool_names and isinstance(args, dict):
+            out.append({"id": f"text-{i}", "name": name, "args": args})
+    return out
 
 
 def load_context(state, paths, llm, tools, emit, control=None):
@@ -27,6 +62,7 @@ def load_context(state, paths, llm, tools, emit, control=None):
     mcp_index = "\n".join(mcp_lines) if mcp_lines else "(none)"
     sys_prompt = SYSTEM.format(memory_snapshot=snapshot, skill_index=json.dumps(index), mcp_index=mcp_index)
     messages = [{"role": "system", "content": sys_prompt}, {"role": "user", "content": state["task"]}]
+    emit(make_event(run_id, "task", text=state["task"], model=state.get("active_model", "")))
     return {
         "run_id": run_id,
         "messages": messages,
@@ -48,6 +84,7 @@ def reason(state, paths, llm, tools, emit, control=None):
     if state.get("status") == "running" and state.get("cycle", 0) >= state.get("max_cycles", 15):
         emit(make_event(state["run_id"], "error", cycle=state["cycle"], text="step limit"))
         return {"status": "capped", "final_answer": state.get("final_answer") or "stopped: step limit"}
+    emit(make_event(state["run_id"], "reason", cycle=state.get("cycle", 0), text="thinking", model=state.get("active_model", "")))
     last_err = None
     for _ in range(2):
         try:
@@ -60,6 +97,8 @@ def reason(state, paths, llm, tools, emit, control=None):
     if last_err is not None:
         return {"status": "failed", "final_answer": f"LLM error: {last_err}"}
     pending = [tc.__dict__ if hasattr(tc, "__dict__") else tc for tc in (resp.tool_calls or [])]
+    if not pending:
+        pending = parse_text_tool_calls(resp.content, set(tools))
     messages = list(state["messages"]) + [{"role": "assistant", "content": resp.content, "tool_calls": pending}]
     emit(make_event(state["run_id"], "reason", cycle=state["cycle"], text=resp.content, model=state.get("active_model", "")))
     if pending:

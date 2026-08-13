@@ -1,5 +1,6 @@
 export const NODES = ["task", "reason", "act", "observe", "success", "learn", "memory_update", "reuse"] as const;
 export const STEPS: Record<string, string> = {
+  task: "task",
   reason: "reason",
   act: "act",
   observe: "observe",

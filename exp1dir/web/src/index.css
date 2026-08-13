@@ -240,12 +240,101 @@ button:disabled {
   padding: 12px;
   font-size: 12.5px;
   line-height: 1.55;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
 .transcript .step {
   color: var(--accent);
+}
+
+.transcript-sep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.transcript-sep::before,
+.transcript-sep::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.discussion {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.transcript-step {
+  border: 1px solid transparent;
+  padding: 2px 0;
+}
+
+.transcript-step summary {
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  list-style: none;
+}
+
+.transcript-step summary::-webkit-details-marker {
+  display: none;
+}
+
+.transcript-step summary::before {
+  content: "▸";
+  color: var(--muted);
+  font-size: 10px;
+  flex: none;
+}
+
+.transcript-step[open] summary::before {
+  content: "▾";
+}
+
+.transcript-step .preview {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.transcript-step[open] .preview {
+  display: none;
+}
+
+.transcript-step .body {
+  margin: 4px 0 8px 18px;
+  white-space: pre-wrap;
+  color: var(--ink);
+}
+
+.transcript-block .body {
+  margin: 4px 0 8px 0;
+  white-space: pre-wrap;
+  color: var(--ink);
+}
+
+.thinking-body {
+  margin: 4px 0 8px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.thinking-step .body {
+  margin: 4px 0 0 0;
+  white-space: pre-wrap;
+  color: var(--ink);
 }
 
 .side {

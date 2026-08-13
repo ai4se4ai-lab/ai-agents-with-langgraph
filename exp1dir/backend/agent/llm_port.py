@@ -56,7 +56,28 @@ class OllamaLLM:
             elif role == "tool":
                 lc.append(ToolMessage(content=m["content"], tool_call_id=m.get("tool_call_id") or "t"))
             else:
-                lc.append(AIMessage(content=m.get("content") or ""))
+                raw_tcs = m.get("tool_calls") or []
+                tcs = []
+                for tc in raw_tcs:
+                    if isinstance(tc, dict):
+                        tcs.append(
+                            {
+                                "id": tc.get("id") or "t",
+                                "name": tc.get("name"),
+                                "args": tc.get("args") or {},
+                                "type": "tool_call",
+                            }
+                        )
+                    else:
+                        tcs.append(
+                            {
+                                "id": getattr(tc, "id", None) or "t",
+                                "name": getattr(tc, "name", None),
+                                "args": getattr(tc, "args", None) or {},
+                                "type": "tool_call",
+                            }
+                        )
+                lc.append(AIMessage(content=m.get("content") or "", tool_calls=tcs))
         if tools:
             from backend.paths import HermesPaths
             from backend.tools.lc import bindable_tools

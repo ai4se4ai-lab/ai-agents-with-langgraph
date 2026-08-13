@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { NODES, nodeForStep } from "./loopMap";
 import { actLabel, type McpServer } from "./mcp";
 
@@ -15,20 +15,94 @@ type LoopEvent = {
   mcp_tool?: string;
 };
 
+type TranscriptEntry = { step: string; body: string };
+
 type Skill = { name: string; description: string };
 
 function toWs(httpUrl: string): string {
   return httpUrl.replace(/^http/, "ws");
 }
 
-function lineFor(event: LoopEvent): string {
-  if (event.step === "act") {
-    const rest = event.input || event.text || "";
-    const body = [actLabel(event), rest].filter(Boolean).join(" ");
-    return `[${event.step}] ${body}`;
+function entryFor(event: LoopEvent): TranscriptEntry {
+  const body =
+    event.step === "act"
+      ? [actLabel(event), event.input || event.text || ""].filter(Boolean).join(" ")
+      : event.text || event.observation || event.input || event.tool || "";
+  return {
+    step: event.step ?? "?",
+    body,
+  };
+}
+
+function groupDiscussions(entries: TranscriptEntry[]): TranscriptEntry[][] {
+  const groups: TranscriptEntry[][] = [];
+  for (const entry of entries) {
+    if (entry.step === "task" || groups.length === 0) {
+      groups.push([entry]);
+    } else {
+      groups[groups.length - 1].push(entry);
+    }
   }
-  const body = event.text || event.observation || event.input || event.tool || "";
-  return `[${event.step ?? "?"}] ${body}`;
+  return groups;
+}
+
+function splitDiscussion(entries: TranscriptEntry[]): {
+  task: TranscriptEntry[];
+  thinking: TranscriptEntry[];
+  final: TranscriptEntry[];
+} {
+  const task: TranscriptEntry[] = [];
+  const thinking: TranscriptEntry[] = [];
+  const final: TranscriptEntry[] = [];
+  for (const entry of entries) {
+    if (entry.step === "task") task.push(entry);
+    else if (entry.step === "success") final.push(entry);
+    else thinking.push(entry);
+  }
+  return { task, thinking, final };
+}
+
+function VisibleBlock({ entry }: { entry: TranscriptEntry }) {
+  return (
+    <div className="transcript-block">
+      <div className="step">[{entry.step}]</div>
+      {entry.body && <div className="body">{entry.body}</div>}
+    </div>
+  );
+}
+
+function ThinkingToggle({ entries }: { entries: TranscriptEntry[] }) {
+  if (entries.length === 0) return null;
+  return (
+    <details className="transcript-step">
+      <summary>
+        <span className="step">thinking</span>
+      </summary>
+      <div className="thinking-body">
+        {entries.map((entry, i) => (
+          <div key={i} className="thinking-step">
+            <div className="step">[{entry.step}]</div>
+            {entry.body && <div className="body">{entry.body}</div>}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function Discussion({ entries }: { entries: TranscriptEntry[] }) {
+  const { task, thinking, final } = splitDiscussion(entries);
+  return (
+    <div className="discussion">
+      {task.map((entry, i) => (
+        <VisibleBlock key={`task-${i}`} entry={entry} />
+      ))}
+      <ThinkingToggle entries={thinking} />
+      {final.map((entry, i) => (
+        <VisibleBlock key={`final-${i}`} entry={entry} />
+      ))}
+    </div>
+  );
 }
 
 function isFailedObserve(event: LoopEvent): boolean {
@@ -43,7 +117,7 @@ export default function App() {
   const [active, setActive] = useState("task");
   const [reuseLit, setReuseLit] = useState(false);
   const [observeFail, setObserveFail] = useState(false);
-  const [lines, setLines] = useState<string[]>([]);
+  const [entries, setEntries] = useState<TranscriptEntry[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [activeModel, setActiveModel] = useState("");
   const [memory, setMemory] = useState("");
@@ -51,7 +125,7 @@ export default function App() {
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [used, setUsed] = useState<string[]>([]);
   const [health, setHealth] = useState("connecting…");
-  const logRef = useRef<HTMLPreElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
 
   function applyEvent(event: LoopEvent) {
     const step = event.step ?? "";
@@ -61,7 +135,7 @@ export default function App() {
     if (event.mcp_server) {
       setUsed((prev) => (prev.includes(event.mcp_server!) ? prev : [...prev, event.mcp_server!]));
     }
-    setLines((prev) => [...prev, lineFor(event)]);
+    setEntries((prev) => [...prev, entryFor(event)]);
     if (step === "memory_update") {
       void refreshSide();
     }
@@ -84,6 +158,8 @@ export default function App() {
 
   useEffect(() => {
     let ws: WebSocket | undefined;
+    let stopped = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     async function boot() {
       try {
         const h = await fetch(`${API}/health`).then((r) => r.json());
@@ -103,20 +179,34 @@ export default function App() {
       await refreshSide();
     }
     void boot();
-    ws = new WebSocket(toWs(`${API}/ws/events`));
-    ws.onmessage = (ev) => {
-      try {
-        applyEvent(JSON.parse(ev.data) as LoopEvent);
-      } catch {
-        /* ignore malformed frames */
-      }
+    function connect() {
+      if (stopped) return;
+      ws = new WebSocket(toWs(`${API}/ws/events`));
+      ws.onmessage = (ev) => {
+        try {
+          applyEvent(JSON.parse(ev.data) as LoopEvent);
+        } catch {
+          /* ignore malformed frames */
+        }
+      };
+      ws.onclose = () => {
+        if (!stopped) retry = setTimeout(connect, 1000);
+      };
+    }
+    connect();
+    return () => {
+      stopped = true;
+      if (retry) clearTimeout(retry);
+      ws?.close();
     };
-    return () => ws?.close();
   }, []);
 
   useEffect(() => {
-    logRef.current?.scrollTo(0, logRef.current.scrollHeight);
-  }, [lines]);
+    const last = entries[entries.length - 1];
+    if (last?.step === "task") {
+      logRef.current?.scrollTo(0, 0);
+    }
+  }, [entries]);
 
   async function send() {
     const text = task.trim();
@@ -125,7 +215,7 @@ export default function App() {
     setReuseLit(false);
     setObserveFail(false);
     setUsed([]);
-    setLines((prev) => [...prev, `[task] ${text}`]);
+    setEntries((prev) => [...prev, { step: "task", body: text }]);
     const res = await fetch(`${API}/runs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -133,7 +223,7 @@ export default function App() {
     });
     if (!res.ok) {
       const err = await res.text();
-      setLines((prev) => [...prev, `[error] ${err}`]);
+      setEntries((prev) => [...prev, { step: "error", body: err }]);
       setObserveFail(true);
       setActive(nodeForStep("error"));
       return;
@@ -179,7 +269,7 @@ export default function App() {
             onChange={(e) => setTask(e.target.value)}
             placeholder="type a task…"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void send();
               }
@@ -217,17 +307,19 @@ export default function App() {
 
         <section className="panel">
           <h2>transcript</h2>
-          <pre className="transcript" ref={logRef}>
-            {lines.map((line, i) => {
-              const m = line.match(/^\[([^\]]+)\] (.*)$/s);
-              if (!m) return <div key={i}>{line}</div>;
-              return (
-                <div key={i}>
-                  <span className="step">[{m[1]}]</span> {m[2]}
-                </div>
-              );
-            })}
-          </pre>
+          <div className="transcript" ref={logRef}>
+            {groupDiscussions(entries)
+              .toReversed()
+              .map((group, gi, all) => {
+                const originalIndex = all.length - 1 - gi;
+                return (
+                  <Fragment key={originalIndex}>
+                    {gi > 0 && <div className="transcript-sep">discussion</div>}
+                    <Discussion entries={group} />
+                  </Fragment>
+                );
+              })}
+          </div>
         </section>
 
         <aside className="panel">

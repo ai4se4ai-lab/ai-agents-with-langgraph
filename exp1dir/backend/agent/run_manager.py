@@ -53,6 +53,12 @@ class RunManager:
     def subscribe(self, fn):
         self.listeners.append(fn)
 
+    def unsubscribe(self, fn):
+        try:
+            self.listeners.remove(fn)
+        except ValueError:
+            pass
+
     def start(self, task: str, model: str = "scripted") -> str:
         run_id = uuid.uuid4().hex
         control = {

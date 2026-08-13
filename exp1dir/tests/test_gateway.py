@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from fastapi.testclient import TestClient
 from backend.agent.llm_port import LLMResponse, ScriptedLLM
@@ -53,3 +54,34 @@ def test_run_events_and_two_clients(tmp_path: Path, monkeypatch):
     with c.websocket_connect(f"/ws/runs/{run_id}") as ws2:
         steps2 = collect(ws2)
     assert "success" in steps1 and "success" in steps2
+
+
+def test_ws_stays_open_while_llm_thinks(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("backend.api.app.list_models", lambda *a, **k: ["alpha"])
+
+    class SlowLLM:
+        def __init__(self):
+            self.i = 0
+
+        def invoke(self, messages, tools):
+            self.i += 1
+            if self.i == 1:
+                time.sleep(1.0)
+                return LLMResponse(content="hello", tool_calls=[])
+            return LLMResponse(content='{"memory": [], "skills": []}', tool_calls=[])
+
+    app = create_app(HermesPaths(root=tmp_path), llm=SlowLLM(), settings=SETTINGS)
+    c = TestClient(app)
+    run_id = c.post("/runs", json={"task": "my name is Majid Babaei remember this"}).json()["run_id"]
+    with c.websocket_connect(f"/ws/runs/{run_id}") as ws:
+        steps = []
+        while True:
+            try:
+                steps.append(ws.receive_json()["step"])
+            except Exception:
+                break
+            if "memory_update" in steps:
+                break
+    app.state.mgr.join(run_id, timeout=15)
+    assert "reason" in steps
+    assert "success" in steps

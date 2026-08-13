@@ -147,32 +147,65 @@ def create_app(paths, llm, settings: dict):
         thread = rec.get("thread")
         return bool(thread and not thread.is_alive())
 
+    def _event_key(event: dict) -> tuple:
+        return (
+            event.get("run_id"),
+            event.get("step"),
+            event.get("cycle"),
+            event.get("text"),
+            event.get("tool"),
+            event.get("observation"),
+            event.get("input"),
+        )
+
+    def _push(loop: asyncio.AbstractEventLoop, q: asyncio.Queue, event: dict) -> None:
+        try:
+            loop.call_soon_threadsafe(q.put_nowait, event)
+        except RuntimeError:
+            pass
+
     @app.websocket("/ws/runs/{run_id}")
     async def ws_run(ws: WebSocket, run_id: str):
         await ws.accept()
+        loop = asyncio.get_running_loop()
+        q: asyncio.Queue = asyncio.Queue()
+
+        def on_event(event):
+            if event.get("run_id") == run_id:
+                _push(loop, q, event)
+
+        mgr.subscribe(on_event)
+        sent: set[tuple] = set()
         try:
-            events = EventLog(paths, run_id).replay()
-            for event in events:
+
+            async def send_event(event: dict) -> bool:
+                key = _event_key(event)
+                if key in sent:
+                    return False
+                sent.add(key)
                 await ws.send_json(event)
-            if not _run_finished(run_id, events):
-                q: asyncio.Queue = asyncio.Queue()
+                return event.get("step") == "memory_update"
 
-                def on_event(event):
-                    if event.get("run_id") == run_id:
-                        q.put_nowait(event)
-
-                mgr.subscribe(on_event)
+            for event in EventLog(paths, run_id).replay():
+                if await send_event(event):
+                    return
+            while True:
                 try:
-                    while True:
-                        event = await asyncio.wait_for(q.get(), timeout=0.5)
-                        await ws.send_json(event)
-                        if event.get("step") == "memory_update":
-                            break
-                except (WebSocketDisconnect, asyncio.TimeoutError):
-                    pass
+                    event = await asyncio.wait_for(q.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    logged = EventLog(paths, run_id).replay()
+                    for event in logged:
+                        if await send_event(event):
+                            return
+                    if _run_finished(run_id, logged):
+                        return
+                    continue
+                if await send_event(event):
+                    return
         except WebSocketDisconnect:
             pass
         finally:
+            mgr.unsubscribe(on_event)
             try:
                 await ws.close()
             except Exception:
@@ -181,15 +214,24 @@ def create_app(paths, llm, settings: dict):
     @app.websocket("/ws/events")
     async def ws_all(ws: WebSocket):
         await ws.accept()
+        loop = asyncio.get_running_loop()
         q: asyncio.Queue = asyncio.Queue()
-        mgr.subscribe(lambda e: q.put_nowait(e))
+
+        def on_event(event):
+            _push(loop, q, event)
+
+        mgr.subscribe(on_event)
         try:
             while True:
-                event = await asyncio.wait_for(q.get(), timeout=60.0)
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=20.0)
+                except asyncio.TimeoutError:
+                    continue
                 await ws.send_json(event)
-        except (WebSocketDisconnect, asyncio.TimeoutError):
+        except WebSocketDisconnect:
             pass
         finally:
+            mgr.unsubscribe(on_event)
             try:
                 await ws.close()
             except Exception:

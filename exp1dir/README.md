@@ -1,25 +1,36 @@
 # exp1 Hermes Agent
 
-LangGraph agent with a Textual TUI and React loop graph. Ollama powers reasoning; the FastAPI gateway streams runs to the terminal and browser.
+LangGraph agent with a Textual TUI and a React loop graph. Ollama powers reasoning. A FastAPI gateway streams runs to the terminal and the browser.
 
-## Setup
+You need **two UIs** and **one API**. Do not open the API in the browser expecting a page.
 
-From the repo root:
+| What | How you start it | Where you use it |
+| --- | --- | --- |
+| Agent TUI (chat) | `hermes` | The terminal |
+| API gateway | Started automatically by `hermes` | `http://127.0.0.1:8765` — JSON API only |
+| React loop graph | `npm run dev` **from `web/`** | **http://localhost:5173** |
+
+`http://127.0.0.1:8765/` returns `{"detail":"Not Found"}` by design. There is no HTML there. Health check: `http://127.0.0.1:8765/health`.
+
+## Prerequisites
+
+- Python 3.11+
+- [Ollama](https://ollama.com/) running, with at least one model pulled (for example `ollama pull qwen2.5-coder:7b`)
+- Node.js + npm (only if you want the React graph)
+
+## 1. Python setup
+
+From this folder (`exp1dir/`), not the repo root:
 
 ```powershell
 cd exp1dir
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
-```
-
-Copy the example env file and point it at your Ollama instance:
-
-```powershell
 copy .env.example .env
 ```
 
-Edit `.env` and set `OLLAMA_BASE_URL` (and optionally `OLLAMA_MODEL` to pin a default). Other variables:
+Edit `.env` and set `OLLAMA_BASE_URL` to your Ollama instance (default `http://127.0.0.1:11434`). Optionally set `OLLAMA_MODEL` to pin a default.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -29,41 +40,46 @@ Edit `.env` and set `OLLAMA_BASE_URL` (and optionally `OLLAMA_MODEL` to pin a de
 | `GATEWAY_HOST` | `127.0.0.1` | Gateway bind address |
 | `GATEWAY_PORT` | `8765` | Gateway port |
 
-## Run the TUI
+Keep the venv activated in any terminal where you run `hermes`. If PowerShell says `hermes` is not recognized, you are not in this folder with `.venv` activated.
 
-After `pip install -e .`, the `hermes` console script is on your PATH (defined in `pyproject.toml` as `tui.main:main`).
+## 2. Run the TUI (required)
 
-**Option A — gateway + TUI in one step** (auto-starts the gateway if it is not running):
+From `exp1dir/` with the venv active:
 
 ```powershell
 hermes
 ```
 
-**Option B — separate gateway process** (useful for React-only or debugging):
+That starts the gateway on port 8765 if it is not already running, then opens the TUI. On startup the TUI prints Ollama health and the active model.
 
-Terminal 1:
+Type a task in the editor and press **Ctrl+Enter** to send.
+
+### TUI commands
+
+- **`/model`** — list available models (active model marked with `*`)
+- **`/model <name>`** — switch the active model
+- **Ctrl+C** — interrupt the current run; your next message redirects that run
+- **`/memory`**, **`/skills`**, **`/history`**, **`/mcp`**, **`/quit`**
+
+### Optional: gateway in its own process
+
+Use this if you only want the React UI, or to debug the API.
+
+Terminal 1 (`exp1dir/`, venv active):
 
 ```powershell
 hermes serve
-# equivalent: python -m tui.main serve
 ```
 
-Terminal 2:
+Terminal 2 (`exp1dir/`, venv active):
 
 ```powershell
 hermes
 ```
 
-On startup the TUI prints Ollama health and the active model.
+## 3. Run the React loop graph (optional)
 
-### TUI usage
-
-- **`/model`** — list available models (active model marked with `*`).
-- **`/model <name>`** — switch the active model.
-- Type a task in the editor and press **Ctrl+Enter** to send.
-- **Ctrl+C** interrupts the current run; your next message redirects that run.
-
-Other commands: `/memory`, `/skills`, `/history`, `/mcp`, `/quit`.
+The React app is in **`exp1dir/web/`**. `npm install` from `exp1dir/` will fail (`package.json` is not there).
 
 ## MCP servers
 
@@ -99,15 +115,15 @@ In React, Act labels MCP calls as `server / tool`. The side list marks servers u
 
 ## React loop graph
 
-In another terminal (with the gateway running):
+In a **new** terminal (venv not required):
 
 ```powershell
-cd web
+cd exp1dir\web
 npm install
 npm run dev
 ```
 
-Open the Vite dev URL (default **http://localhost:5173**). The UI connects to `http://127.0.0.1:8765` by default.
+Open **http://localhost:5173**. That UI talks to the gateway at `http://127.0.0.1:8765` in the background. Leave `hermes` running while you use it.
 
 If you changed `GATEWAY_PORT`, set `VITE_GATEWAY` when starting Vite:
 
@@ -117,13 +133,15 @@ $env:VITE_GATEWAY="http://127.0.0.1:9000"; npm run dev
 
 ## Manual smoke test
 
-1. Start the gateway and TUI (`hermes` or `hermes serve` + `hermes`).
+1. Start the TUI (`hermes`). Optionally start the React app (`cd web; npm run dev`) and open http://localhost:5173.
 2. Ask the agent to **list files in the workspace** (sandbox under `.hermes/workspace/`).
 3. Ask it to **remember a fact** (e.g. your favorite color); confirm with `/memory`.
 4. Start a **second task** that should reuse that fact without re-stating it.
-5. With `npm run dev` running, watch the **Reason → Act → Observe → Learn** graph update live.
+5. With Vite running, watch the **Reason → Act → Observe → Learn** graph update live.
 
 ## Tests
+
+From `exp1dir/` with the venv active:
 
 ```powershell
 python -m pytest -v

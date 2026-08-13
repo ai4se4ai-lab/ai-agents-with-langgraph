@@ -5,7 +5,7 @@ from backend.paths import HermesPaths
 
 def test_loop_nodes_cover_steps():
     data = load_loop_nodes()
-    for step in ("reason", "act", "observe", "success", "learn", "memory_update", "error"):
+    for step in ("task", "reason", "act", "observe", "success", "learn", "memory_update", "error"):
         assert step in data["steps"]
 
 
